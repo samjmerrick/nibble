@@ -1,0 +1,20 @@
+# Runs bee-database with Nibble loaded. It replaces the stock mcp-db service from bee-database:
+# same container name, same .env, same ./data volume, so nothing else on the server changes.
+# Expected layout (override with the variables if yours differs):
+#   ~/bee-database/   the server repo, with .env and data/
+#   ~/nibble/         this repo
+services:
+  mcp-db:
+    build:
+      context: .
+      additional_contexts:
+        bee: ${BEE_SERVER_DIR:-../bee-database/server}
+    container_name: mcp-db
+    restart: unless-stopped
+    env_file: ${BEE_ENV_FILE:-../bee-database/.env}
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${BEE_DATA_DIR:-../bee-database/data}:/data
+    ports:
+      - "127.0.0.1:8765:8000"
