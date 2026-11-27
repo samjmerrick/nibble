@@ -1,0 +1,11 @@
+{
+  "name": "nibble",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "bee-kit": "github:samjmerrick/bee-kit"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
