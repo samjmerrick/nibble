@@ -46,7 +46,7 @@ docker compose up -d --build
 curl http://127.0.0.1:8766/health
 ```
 
-It joins bee-database's Docker network (`BEE_NETWORK`, default `bee-database_default`). In the
+It joins the Docker network that bee-database and cloudflared share (`BEE_NETWORK`, default `ha-net`). In the
 Cloudflare tunnel, route `home.samjmerrick.com` path `^/nibble(/.*)?$` to `http://nibble:8000`
 **above** the rule that sends the rest of the hostname to bee (see bee-database's
 `cloudflared-ingress.yml`; in the dashboard it is a Public Hostname with a Path). On start Nibble

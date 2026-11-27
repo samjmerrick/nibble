@@ -14,5 +14,5 @@ services:
 
 networks:
   bee:
-    name: ${BEE_NETWORK:-bee-database_default}   # the network bee-database's compose created
+    name: ${BEE_NETWORK:-ha-net}   # the Docker network bee-database and cloudflared share on this server
     external: true
