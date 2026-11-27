@@ -1,4 +1,4 @@
-// The JS reader must give exactly what the original Python reader (legacy/server/textparse.py) gave on these texts.
+// The JS reader must give exactly what the original Python reader (the earlier Python version) gave on these texts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
