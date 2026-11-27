@@ -1,0 +1,8 @@
+{
+  "name": "nibble",
+  "path": "/nibble",
+  "project": "nibble",
+  "tools": ["list_records", "search", "get", "store", "update", "delete"],
+  "offers": [],
+  "jobs": []
+}
