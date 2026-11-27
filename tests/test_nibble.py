@@ -231,3 +231,36 @@ def test_a_model_converts_imports_when_set_up(clients, stack, monkeypatch):
 def test_logout_goes_to_the_database(clients):
     r = clients["family"].post("/nibble/logout")
     assert r.status_code == 307 and r.headers["location"] == "/auth/web/logout"
+
+
+SHOP_CASES = [
+    ("2 x 400g tins chopped tomatoes, drained", "chopped tomatoes"),
+    ("chopped tomatoes", "chopped tomatoes"),
+    ("Salt", "salt"),
+    ("Black pepper, to taste", "black pepper"),
+    ("salt and pepper to taste", "salt and pepper"),
+    ("3 garlic cloves, finely chopped", "garlic cloves"),
+    ("1 onion finely chopped", "onion"),
+    ("onion, chopped", "onion"),
+    ("500 g skinless chicken thighs or breast", "skinless chicken thighs or breast"),
+    ("1 ½ tsp ground cumin", "ground cumin"),
+    ("a pinch of sea salt", "sea salt"),
+    ("pinch of salt (optional)", "salt"),
+    ("1/2 lemon, juice only", "lemon"),
+    ("freshly ground black pepper", "black pepper"),
+    ("", ""),
+]
+
+
+def test_shopping_search_term_is_the_ingredient_alone(tmp_path):
+    """The page's shopTerm() (the block between the shopping-term markers) run under node."""
+    import shutil
+    if not shutil.which("node"):
+        pytest.skip("node not installed")
+    page = (ROOT / "server" / "static" / "nibble.html").read_text()
+    block = page.split("/* shopping-term:start", 1)[1].split("/* shopping-term:end */", 1)[0]
+    block = block.split("\n", 1)[1]
+    script = tmp_path / "term.js"
+    script.write_text(block + "\nconsole.log(JSON.stringify(JSON.parse(process.argv[2]).map(shopTerm)));\n")
+    out = subprocess.run(["node", str(script), json.dumps([c[0] for c in SHOP_CASES])], capture_output=True, text=True, check=True)
+    assert json.loads(out.stdout) == [c[1] for c in SHOP_CASES]
