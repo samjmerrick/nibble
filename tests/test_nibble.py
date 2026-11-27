@@ -98,6 +98,7 @@ def test_signed_out_people_go_to_the_database_sign_in(clients):
 def test_page_is_nibble_and_knows_the_role(clients):
     r = clients["family"].get("/nibble")
     assert r.status_code == 200 and "<title>Nibble</title>" in r.text and "Moomin" not in r.text
+    assert 'name="viewport" content="width=device-width, initial-scale=1' in r.text  # or phones render it zoomed out
     assert '"canEdit": true' in r.text and '"canDelete": false' in r.text
     assert '"canDelete": true' in clients["owner"].get("/nibble").text
 
