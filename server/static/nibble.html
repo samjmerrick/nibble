@@ -127,6 +127,17 @@ ul.ings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;ga
 ul.ings li{padding:.35rem 0;border-bottom:1px dashed var(--line);display:flex;gap:.5rem}
 ul.ings .q{font-weight:700;min-width:4.6rem;font-variant-numeric:tabular-nums}
 ul.ings .n{color:var(--muted)}
+/* shopping list: the tick box and the name are separate targets, each at least 44px tall */
+.shop-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 8px}
+.shop-bar span{color:var(--muted)}
+.shop h3{font-size:1.1rem;font-weight:700;margin:18px 0 2px}
+ul.shop-list{list-style:none;margin:0;padding:0}
+ul.shop-list li{display:flex;align-items:center;gap:.25rem;border-bottom:1px dashed var(--line)}
+.shop .tick{flex:none;width:48px;height:48px;display:grid;place-items:center;cursor:pointer}
+.shop .tick input{width:26px;height:26px;margin:0;accent-color:var(--accent);cursor:pointer}
+.shop .q{flex:none;font-weight:700;min-width:4.2rem;font-variant-numeric:tabular-nums}
+.shop a.name{flex:1;min-width:0;min-height:48px;display:flex;align-items:center;color:var(--fg);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;overflow-wrap:anywhere}
+.shop li.done .q,.shop li.done a.name{color:var(--muted);text-decoration:line-through}
 ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:8px}
 ol.steps li{counter-increment:s;display:grid;grid-template-columns:2rem minmax(0,1fr);gap:.5rem}
 ol.steps li::before{content:counter(s);font-family:var(--font-display);font-weight:800;color:var(--cat);font-size:1.1rem;text-align:right}
@@ -451,6 +462,86 @@ function scaleNote(note, f){
     return v + (/^(kg|g|ml|l)$/i.test(unit) ? " " : " ") + unit;
   });
 }
+/* ---------- shopping list ---------- */
+/* shopping-term:start (tests/test_nibble.py runs this block under node; keep it free of page code) */
+const SHOP_LEAD = /^(?:(?:about|approx\.?|roughly)\s+|[\d½¼¾⅓⅔⅛][\d½¼¾⅓⅔⅛./–-]*\s*(?:x|×)?\s*|(?:kg|g|ml|l|cl|oz|lb|lbs|tsp|tbsp|cups?|tins?|cans?|packs?|packets?|bunch(?:es)?|handfuls?|cloves?|pinch(?:es)?|splash(?:es)?|dash(?:es)?|knobs?|glugs?|sprigs?|sticks?|slices?|large|small|medium|big|heaped|level|x|×|of)\b\.?\s*)+/i;
+const SHOP_PREP = /\b(?:(?:finely|roughly|coarsely|thinly|freshly|lightly|well)\s+)?(?:chopped|sliced|diced|grated|ground|crushed|minced|beaten|peeled|drained|rinsed|melted|softened)\s*$/i;
+/* "2 x 400g tins chopped tomatoes, drained" -> "chopped tomatoes": the ingredient on its own,
+   with no amount, unit, bracket, prep note or "to taste". */
+function shopTerm(item){
+  const orig = String(item || "").replace(/\s+/g, " ").trim();
+  let t = orig.toLowerCase()
+    .replace(/\([^)]*\)?/g, " ")
+    .replace(/[,;:].*$/, "")
+    .replace(/\s[-–—]\s.*$/, "")
+    .replace(/\b(?:to|for)\s+(?:taste|serve|serving|garnish|frying|dusting|greasing|drizzling)\b.*$/, "")
+    .replace(/\boptional\b/g, "")
+    .replace(/\b(?:finely|roughly|coarsely|thinly|freshly|lightly)\s+(?:chopped|sliced|diced|grated|ground|crushed|minced)\b/g, "")
+    .replace(/^an?\s+(?=(?:pinch|handful|bunch|splash|dash|knob|glug)\b)/, "")
+    .replace(/\s+/g, " ").trim();
+  t = t.replace(SHOP_LEAD, "").trim();
+  const bare = t.replace(SHOP_PREP, "").trim();
+  if (bare.includes(" ")) t = bare;
+  return t.replace(/^[\s.\-–]+|[\s.\-–]+$/g, "") || orig;
+}
+/* shopping-term:end */
+const shopUrl = term => "https://www.sainsburys.co.uk/gol-ui/SearchResults/" + encodeURIComponent(term);
+/* One row per ingredient across the whole recipe: the same thing in the same unit is added up and
+   shown under the first part that uses it. Returns [{name, rows:[{key, q, item, term}]}]. */
+function shoppingList(r, f){
+  const seen = new Map(), groups = [];
+  for (const c of r.components || []){
+    const g = {name: c.name || "", rows: []};
+    for (const i of c.ingredients || []){
+      const term = shopTerm(i.item), key = term + "|" + (i.unit || "").toLowerCase();
+      const have = seen.get(key);
+      if (have){
+        if (i.qty != null){
+          have.qty = (have.qty || 0) + i.qty;
+          if (have.qty_max != null || i.qty_max != null) have.qty_max = (have.qty_max != null ? have.qty_max : have.qty - i.qty) + (i.qty_max != null ? i.qty_max : i.qty);
+        }
+        continue;
+      }
+      const row = {key, term, item: i.item, unit: i.unit, qty: i.qty, qty_max: i.qty_max};
+      seen.set(key, row); g.rows.push(row);
+    }
+    if (g.rows.length) groups.push(g);
+  }
+  groups.forEach(g => g.rows.forEach(row => { row.q = ingText(row, f).q; }));
+  return groups;
+}
+function openShopping(r, f, servings){
+  const sKey = "rb.shop." + r.id, groups = shoppingList(r, f);
+  const all = groups.flatMap(g => g.rows);
+  let ticked = store.get(sKey, []);
+  if (!Array.isArray(ticked)) ticked = [];
+  const s = sheet("Shopping list");
+  const count = h("span", {"aria-live":"polite"});
+  const clear = h("button", {class:"btn", type:"button", onclick:() => { ticked = []; store.set(sKey, ticked); draw(); }}, "Clear ticks");
+  const box = h("div", {class:"shop"});
+  function draw(){
+    const n = all.filter(x => ticked.includes(x.key)).length;
+    count.textContent = `${n} of ${all.length} ticked`;
+    clear.disabled = !n;
+    box.replaceChildren(...groups.map(g => h("section", null,
+      groups.length > 1 && g.name ? h("h3", null, g.name) : null,
+      h("ul", {class:"shop-list"}, g.rows.map(x => {
+        const on = ticked.includes(x.key);
+        return h("li", {class:on ? "done" : ""},
+          h("label", {class:"tick"}, h("input", {type:"checkbox", checked:on, "aria-label":`Have ${x.item}`, onchange:e => {
+            ticked = e.target.checked ? [...ticked.filter(k => k !== x.key), x.key] : ticked.filter(k => k !== x.key);
+            store.set(sKey, ticked); draw();
+          }})),
+          h("span", {class:"q"}, x.q),
+          h("a", {class:"name", href:shopUrl(x.term), target:"_blank", rel:"noopener", "aria-label":`${x.item}: search Sainsbury's`}, x.item));
+      })))));
+  }
+  s.body.append(
+    h("p", {style:"margin:0;color:var(--muted)"}, r.title + (servings ? ` · serves ${servings}` : "") + ". Tick what you already have; tap a name to search Sainsbury\u2019s."),
+    h("div", {class:"shop-bar"}, count, clear), box);
+  if (!all.length) box.replaceWith(h("p", null, "This recipe has no ingredients."));
+  else draw();
+}
 function fmtTime(s){
   s = Math.max(0, Math.round(s));
   const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60;
@@ -671,6 +762,7 @@ function recipeView(r){
 
   const actions = h("div", {class:"actions"},
     h("button", {class:"btn primary", type:"button", onclick:() => openCook(r)}, "Start cooking"),
+    h("button", {class:"btn", type:"button", onclick:() => openShopping(r, f, want)}, "🛒 Shopping list"),
     base ? h("span", {class:"scaler", "aria-label":"Servings"},
       h("button", {type:"button", "aria-label":"Fewer servings", onclick:() => { state.scale[r.id] = Math.max(1, want - 1); rerenderOpen(r); }}, "−"),
       h("span", null, `Serves ${want}`),
