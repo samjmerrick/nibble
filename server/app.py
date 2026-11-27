@@ -1,7 +1,7 @@
 """Nibble: the family recipe app, a standalone web service in front of bee-database.
 
 It serves the web page at /nibble and a small JSON API at /nibble/api/<tool>. Recipes are records
-in the database's `recipes` project, read and written over its MCP endpoint with a service token.
+in the database's `nibble` project, read and written over its MCP endpoint with a service token.
 People and roles are the database's: sign-in happens at the database (/auth/web/login), and each
 request asks GET /auth/whoami (forwarding the browser's cookie) who is signed in.
 
@@ -10,7 +10,7 @@ Settings (environment):
   DB_URL           the database's base URL for /auth/whoami (default http://mcp-db:8000)
   DB_TOKEN         bearer token for the database (its MCP_API_TOKEN, or another admin token)
   PUBLIC_URL       the address people use, e.g. https://home.samjmerrick.com (for the Origin check)
-  PROJECT          the database project holding recipes (default "recipes")
+  PROJECT          the database project holding recipes (default "nibble")
   PORT             listen port (default 8000)
 """
 

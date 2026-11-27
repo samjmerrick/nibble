@@ -45,7 +45,7 @@ def stack():
         else:
             raise RuntimeError("bee-database didn't start: " + srv.stderr.read().decode()[-500:])
         c = sqlite3.connect(Path(data) / "mcp.db")
-        c.execute("INSERT OR REPLACE INTO settings VALUES ('family_roles', ?)", (json.dumps({"recipes": "editor"}),))
+        c.execute("INSERT OR REPLACE INTO settings VALUES ('family_roles', ?)", (json.dumps({"nibble": "editor"}),))
         c.commit()
         os.environ.update(DB_URL=f"http://127.0.0.1:{port}", DB_TOKEN="svc-token", PUBLIC_URL=f"http://127.0.0.1:{port}")
         import app as nibble
@@ -116,7 +116,7 @@ def test_recipes_round_trip_through_the_database(clients, stack):
     nibble, port = stack
     import asyncio
     rec = asyncio.run(nibble.db.call("get", id=r["id"]))
-    assert rec["project"] == "recipes" and "leeks" in rec["content"]
+    assert rec["project"] == "nibble" and "leeks" in rec["content"]
     bad = call(fam, "recipe_save", recipe={"title": "x", "category": "soup"})
     assert bad.status_code == 400 and "category" in bad.json()["error"]["message"]
 

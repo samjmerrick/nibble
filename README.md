@@ -5,7 +5,7 @@ step-by-step), draft/live status, Gousto and web-page import, and Claude can add
 be added and edited by chat. Formerly "Moominmamma's Kitchen" / "Family Recipe Box".
 
 Nibble is its own small web service. It stores everything in
-[bee-database](https://github.com/samjmerrick/bee-database) (recipes are records in the `recipes`
+[bee-database](https://github.com/samjmerrick/bee-database) (recipes are records in the `nibble`
 project, read and written over the database's MCP endpoint) and signs people in through it:
 the database's Google sign-in, people and roles (viewer, editor, manager) decide who can see,
 edit and delete. Nibble has no database and no user list of its own.
@@ -26,7 +26,7 @@ person's role. Tools: `recipe_format_guide`, `recipe_list`, `recipe_get` (viewer
 `recipe_patch`, `recipe_fetch_page` (editor), `recipe_delete` (manager).
 
 Claude can also work with recipes directly through the database connector: they are records in
-project `recipes` whose collection has the recipe schema and the format guide.
+project `nibble` whose collection has the recipe schema and the format guide.
 
 ## How sign-in works
 
@@ -50,7 +50,7 @@ It joins bee-database's Docker network (`BEE_NETWORK`, default `bee-database_def
 Cloudflare tunnel, route `home.samjmerrick.com` path `^/nibble(/.*)?$` to `http://nibble:8000`
 **above** the rule that sends the rest of the hostname to bee (see bee-database's
 `cloudflared-ingress.yml`; in the dashboard it is a Public Hostname with a Path). On start Nibble
-defines the `recipes` project and collection in the database (schema and guide) and leaves
+defines the `nibble` project and its `recipes` collection in the database (schema and guide) and leaves
 existing records and members alone. The old `/recipes` address redirects to `/nibble`.
 
 ## Tests

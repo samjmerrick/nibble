@@ -1,6 +1,6 @@
 """The family recipe format: guide, schema, normalising, and conversion to and from records.
 
-A recipe is one record in project `recipes`, collection `recipes`. The record's title and tags
+A recipe is one record in project `nibble`, collection `recipes`. The record's title and tags
 are the recipe's; everything else (category, status, components with ingredients and steps...)
 is in `metadata`, checked by SCHEMA. `content` is a readable markdown version, regenerated
 on every write, so search and Claudes that don't know the format still see the whole recipe.
@@ -12,7 +12,7 @@ import html
 import re
 from typing import Any
 
-PROJECT = "recipes"
+PROJECT = "nibble"
 COLLECTION = "recipes"
 
 CATEGORIES = ("meals", "baking", "bread", "ice-cream")
@@ -80,11 +80,13 @@ Recipe JSON shape for recipe_save:
 """
 
 PROJECT_GUIDE = (
-    "The family recipe box. Use the recipe_* tools for recipes (recipe_format_guide first, then "
-    "recipe_list / recipe_get / recipe_save / recipe_patch; recipe_fetch_page to import a web page). "
-    "Each recipe is one record in the `recipes` collection: title and tags on the record, the rest in "
-    "metadata. Generic store/update also work and are normalised the same way, but recipe_save is "
-    "simpler.\n\n" + FORMAT_GUIDE + "\nICONS: " + ", ".join(ICONS)
+    "Nibble, the family recipe app. Each recipe is one record in the `recipes` collection: the recipe's "
+    "title and tags on the record, everything else (category, status, components with ingredients and "
+    "steps, ...) in `metadata`, which must match the collection's schema (see describe_project). Put a "
+    "readable markdown version of the recipe in `content` (title, ingredients, numbered steps): search "
+    "reads it. New recipes should have metadata.status \"draft\" until someone approves them. Use `store` "
+    "to add and `update` (with replace_metadata) to change a recipe.\n\n" + FORMAT_GUIDE
+    + "\nICONS: " + ", ".join(ICONS)
 )
 
 _STR_OR_NULL = {"type": ["string", "null"]}
