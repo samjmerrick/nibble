@@ -935,7 +935,14 @@ function openImport(){
       if (!state.sample && !WEB) throw {code:"not_granted"};
       const g = WEB ? "" : await guide();
       let rec, fallback = {};
-      if (kind === "link"){
+      if (kind === "link" && WEB){
+        /* Nibble fetches the page and converts it (with its model when one is set up). */
+        const url = form.querySelector("#impUrl").value.trim();
+        prog.textContent = "Fetching and converting the recipe… this can take up to a minute.";
+        try { rec = await call("recipe_import_page", {url}); }
+        catch (e){ throw {code:"fetch", message: e && e.code === "tool_error" ? (e.message || "") : connCopy(e)[1]}; }
+        fallback = {source_url: rec.source_url || url, image_url: rec.image_url, title: rec.title};
+      } else if (kind === "link"){
         const url = form.querySelector("#impUrl").value.trim();
         prog.textContent = "Fetching the page on bee…";
         let page;
@@ -944,23 +951,14 @@ function openImport(){
         fallback = {source_url: page.url || url, image_url: page.image, title: (page.structured && page.structured.name) || page.title};
         const payload = JSON.stringify({structured_data: page.structured, page_text: page.structured ? (page.text || "").slice(0, 6000) : page.text, url: page.url});
         prog.textContent = page.structured ? "Found the recipe data. Claude is splitting the steps…" : "No recipe data on that page. Claude is reading the page text…";
-        if (WEB){
-          /* No Claude here: keep the page's own recipe data as it is, as a draft to tidy later. */
-          const st = page.structured;
-          if (!st || !(st.ingredients || []).length) throw {code:"fetch", message:"that page has no recipe data this version can read."};
-          rec = {title: st.name || page.title, description: st.description || "", servings: parseInt(st.yield, 10) || null,
-            total_minutes: st.total_minutes || null, extra: st.cuisine ? {cuisine: String(st.cuisine)} : {},
-            notes: "Imported as written on the source page; steps not yet split into single actions.",
-            components: [{name: "", ingredients: st.ingredients.map(t => ({item: String(t)})), steps: (st.instructions || []).map(x => ({text: x.text}))}]};
-        } else
         rec = await state.sample.json(convertPrompt(g, "Source page (structured_data is exact; use it for ingredients and quantities)", payload), {signal: ctl.signal, cache:false});
       } else if (kind === "text"){
         const src = form.querySelector("#impSrc").value.trim();
         fallback = {source_url: safeUrl(src)};
         const text = form.querySelector("#impText").value.slice(0, 40000);
         if (WEB){
-          /* No Claude here: Nibble reads the headings, quantities and numbered steps itself. */
-          prog.textContent = "Reading the recipe…";
+          /* Nibble converts it: with its model when one is set up, else by reading headings and numbered steps. */
+          prog.textContent = "Converting the recipe… this can take up to a minute.";
           try { rec = await call("recipe_parse_text", {text, source_url: fallback.source_url || null}); }
           catch (e){ throw {code:"parse", message: e && e.code === "tool_error" ? (e.message || "") : connCopy(e)[1]}; }
         } else {
@@ -972,15 +970,21 @@ function openImport(){
         prog.textContent = "Claude is reading the photo…";
         rec = await state.sample.json(convertPrompt(g, "Recipe", "The attached photo shows a recipe page. Transcribe it faithfully."), {signal: ctl.signal, images:[file], cache:false});
       }
-      showReview(normalise(rec, fallback), out, s);
+      const how = rec && rec._import; if (rec) delete rec._import;
+      showReview(normalise(rec, fallback), out, s, undefined, how);
     } catch (e){
       out.replaceChildren(h("div", {class:"banner err"}, e && e.code === "fetch" ? `Couldn't fetch that page: ${e.message} Paste the recipe text instead.` : e && e.code === "parse" ? e.message : sampleCopy(e)));
     } finally { btn.disabled = false; }
   }
 }
 
-function showReview(rec, out, s, existingId){
+function showReview(rec, out, s, existingId, how){
   const c = checks(rec);
+  const howNote = !how ? null : h("p", {class:"progress", style:"margin:0 0 10px"},
+    how.by === "reader" ? "Read by Nibble without AI: steps are as written, so check them before saving." :
+    how.by === "page" ? "Taken from the page's own recipe data without AI: steps are as written, so check them before saving." :
+    `Converted by ${how.by}. Check the quantities before saving.`,
+    how.why ? ` (The AI model wasn't available: ${how.why})` : "");
   const titleIn = h("input", {id:"revTitle", value: rec.title});
   const catIn = h("select", {id:"revCat"}, CATS.map(cat => h("option", {value:cat.id, selected: cat.id === rec.category}, cat.label)));
   const servIn = h("input", {id:"revServ", type:"number", min:"1", value: rec.servings || ""});
@@ -997,7 +1001,7 @@ function showReview(rec, out, s, existingId){
       s.close(); await afterWrite(saved.id); state.full.set(saved.id, saved); openRecipe(saved.id);
     } catch (e){ saveBtn.disabled = false; toast(connCopy(e)[0]); }
   };
-  out.replaceChildren(
+  out.replaceChildren(...(howNote ? [howNote] : []),
     h("div", {class:"banner" + (c.long.length || c.unused.length ? " warn" : "")}, h("div", null,
       h("b", null, `${c.steps} steps, ${c.timers} timer${c.timers === 1 ? "" : "s"}. `),
       c.long.length ? `${c.long.length} step${c.long.length > 1 ? "s" : ""} may hold more than one action (marked below). ` : "Every step is a single action. ",

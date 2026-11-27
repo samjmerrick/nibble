@@ -21,6 +21,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ from starlette.routing import Route
 
 import gousto
 import recipe as R
+import llm
 import textparse
 import webfetch
 from dbclient import Db, DbError
@@ -190,11 +192,60 @@ async def recipe_fetch_page(url: str) -> dict[str, Any]:
     return out
 
 
+def _imported(rec: dict[str, Any], by: str, why: str | None = None) -> dict[str, Any]:
+    """Tell the page how the draft was made (a model, or Nibble's own reader and why)."""
+    rec["_import"] = {"by": by, **({"why": why} if why else {})}
+    return rec
+
+
 async def recipe_parse_text(text: str, source_url: str | None = None) -> dict[str, Any]:
-    """Pasted recipe text -> a draft recipe (no AI: see textparse)."""
+    """Pasted recipe text -> a draft recipe: by the model when one is set up, else Nibble's own reader."""
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Paste the recipe text first.")
-    return textparse.parse_text(text[:40000], source_url)
+    text = text[:40000]
+    why = None
+    if llm.enabled():
+        try:
+            rec, model = await llm.convert("Recipe text", text)
+            if source_url and not rec.get("source_url"):
+                rec["source_url"] = source_url
+            return _imported(rec, model)
+        except llm.LlmError as e:
+            why = str(e)
+            log.warning("model import failed, using the reader: %s", e)
+    return _imported(textparse.parse_text(text, source_url), "reader", why)
+
+
+def _from_structured(st: dict[str, Any], page: dict[str, Any]) -> dict[str, Any]:
+    """A page's schema.org recipe as a draft, steps as the page wrote them."""
+    return {
+        "title": st.get("name") or page.get("title") or "Untitled recipe", "category": "meals", "status": "draft",
+        "description": st.get("description") or "", "servings": R._int((re.findall(r"\d+", str(st.get("yield") or "")) or [None])[0]),
+        "total_minutes": st.get("total_minutes"), "extra": {"cuisine": str(st["cuisine"])} if st.get("cuisine") else {},
+        "notes": "Imported as written on the source page; steps not yet split into single actions.",
+        "components": [{"name": "", "ingredients": [textparse.parse_ingredient(str(t)) for t in st.get("ingredients") or []],
+                        "steps": [{"text": x["text"]} for x in st.get("instructions") or []]}],
+    }
+
+
+async def recipe_import_page(url: str) -> dict[str, Any]:
+    """A recipe web page -> a draft recipe: the model when set up, else the page's own recipe data."""
+    page = await recipe_fetch_page(url)
+    st = page.get("structured")
+    base = {"source_url": page.get("url") or url, "image_url": page.get("image")}
+    why = None
+    if llm.enabled():
+        payload = json.dumps({"structured_data": st, "page_text": (page.get("text") or "")[:6000 if st else 15000],
+                              "url": page.get("url")})
+        try:
+            rec, model = await llm.convert("Source page (structured_data is exact; use it for ingredients and quantities)", payload)
+            return _imported({**rec, **{k: v for k, v in base.items() if v and not rec.get(k)}}, model)
+        except llm.LlmError as e:
+            why = str(e)
+            log.warning("model import failed, using the page data: %s", e)
+    if not st or not st.get("ingredients"):
+        raise ValueError("That page has no recipe data Nibble can read. Paste the recipe text instead.")
+    return _imported({**_from_structured(st, page), **{k: v for k, v in base.items() if v}}, "page", why)
 
 
 TOOLS = {
@@ -202,6 +253,7 @@ TOOLS = {
     "recipe_get": ("read", recipe_get), "recipe_save": ("write", recipe_save),
     "recipe_patch": ("write", recipe_patch), "recipe_delete": ("delete", recipe_delete),
     "recipe_fetch_page": ("write", recipe_fetch_page), "recipe_parse_text": ("write", recipe_parse_text),
+    "recipe_import_page": ("write", recipe_import_page),
 }
 
 

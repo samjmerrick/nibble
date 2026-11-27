@@ -17,6 +17,7 @@ edit and delete. Nibble has no database and no user list of its own.
 | Recipe format, schema, guide for Claude | `server/recipe.py` |
 | Gousto cookbook adapter and safe page fetching | `server/gousto.py`, `server/webfetch.py` |
 | Pasted recipe text to a draft (headings, quantities, numbered steps; no AI) | `server/textparse.py` |
+| AI conversion of imports to the family format (OpenRouter free models by default) | `server/llm.py` |
 | The web app (single HTML file) | `server/static/nibble.html` |
 | End-to-end tests (real bee-database + Nibble) | `tests/` |
 
@@ -24,10 +25,18 @@ edit and delete. Nibble has no database and no user list of its own.
 
 The page calls `POST /nibble/api/<tool>` with a JSON body; each call checks the signed-in
 person's role. Tools: `recipe_format_guide`, `recipe_list`, `recipe_get` (viewer), `recipe_save`,
-`recipe_patch`, `recipe_fetch_page`, `recipe_parse_text` (editor), `recipe_delete` (manager).
+`recipe_patch`, `recipe_fetch_page`, `recipe_parse_text`, `recipe_import_page` (editor), `recipe_delete` (manager).
 
 Claude can also work with recipes directly through the database connector: they are records in
 project `nibble` whose collection has the recipe schema and the format guide.
+
+## Imports and AI
+
+"From a link" and "Paste text" are converted into the family format (one action per step, timers, grams)
+by a language model when `LLM_API_KEY` is set: any OpenAI-compatible endpoint, OpenRouter's free models by
+default (`LLM_MODEL=openrouter/free`). The answer is checked before it is shown. With no key, or when the
+model is busy, fails or answers nonsense, Nibble falls back to its own reader (pasted text) or the page's
+recipe data (links), keeping the steps as written; the review screen says which was used.
 
 ## How sign-in works
 
