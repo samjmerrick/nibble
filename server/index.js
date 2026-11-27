@@ -17,6 +17,16 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 const err = (code, message, status) => json({ error: { code, message } }, status);
 class NotFound extends Error {}
 
+// Model settings live in the gateway's per-app secrets (LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TIMEOUT).
+async function llmEnv(env) {
+  const out = { ...env };
+  for (const k of ["LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "LLM_TIMEOUT"]) {
+    const v = await env.BEE.secret("nibble", k);
+    if (v) out[k] = v.trim();
+  }
+  return out;
+}
+
 function tools(env, bee) {
   const allRecipes = async (filters = {}) => {
     const out = [];
@@ -83,9 +93,10 @@ function tools(env, bee) {
     if (typeof text !== "string" || !text.trim()) throw new UserError("Paste the recipe text first.");
     text = text.slice(0, 40000);
     let why = null;
-    if (llm.enabled(env)) {
+    const lenv = await llmEnv(env);
+    if (llm.enabled(lenv)) {
       try {
-        const [rec, model] = await llm.convert(env, "Recipe text", text);
+        const [rec, model] = await llm.convert(lenv, "Recipe text", text);
         if (source_url && !rec.source_url) rec.source_url = source_url;
         return imported(rec, model);
       } catch (e) { if (!(e instanceof llm.LlmError)) throw e; why = e.message; }
@@ -104,10 +115,11 @@ function tools(env, bee) {
     const st = page.structured;
     const base = { source_url: page.url || url, image_url: page.image };
     let why = null;
-    if (llm.enabled(env)) {
+    const lenv = await llmEnv(env);
+    if (llm.enabled(lenv)) {
       const payload = JSON.stringify({ structured_data: st, page_text: (page.text ?? "").slice(0, st ? 6000 : 15000), url: page.url });
       try {
-        const [rec, model] = await llm.convert(env, "Source page (structured_data is exact; use it for ingredients and quantities)", payload);
+        const [rec, model] = await llm.convert(lenv, "Source page (structured_data is exact; use it for ingredients and quantities)", payload);
         const fill = Object.fromEntries(Object.entries(base).filter(([k, v]) => v && !rec[k]));
         return imported({ ...rec, ...fill }, model);
       } catch (e) { if (!(e instanceof llm.LlmError)) throw e; why = e.message; }
