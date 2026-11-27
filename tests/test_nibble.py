@@ -137,6 +137,97 @@ def test_foreign_origin_and_non_json_are_refused(clients, stack):
     assert fam.post("/nibble/api/nope", json={}).status_code == 403
 
 
+PASTED = """Lemon Drizzle Cake
+A light sponge with a sharp lemon syrup.
+Serves 8
+Ingredients
+225g unsalted butter, softened
+2 x 400g tins chopped tomatoes
+1 ½ tbsp milk
+4 eggs
+For the drizzle:
+Juice of 1½ lemons
+85g caster sugar
+Method
+1. Heat the oven to 180C.
+2. Beat the butter and sugar until pale
+and creamy.
+3. Bake for 45 minutes.
+"""
+
+
+def test_pasted_text_becomes_a_draft_that_saves(clients):
+    fam = clients["family"]
+    r = call(fam, "recipe_parse_text", text=PASTED, source_url="https://example.com/cake")
+    assert r.status_code == 200, r.text
+    rec = r.json()
+    assert rec["title"] == "Lemon Drizzle Cake" and rec["servings"] == 8 and rec["status"] == "draft"
+    main, drizzle = rec["components"]
+    assert main["ingredients"][:4] == [
+        {"qty": 225, "unit": "g", "item": "unsalted butter", "note": "softened"},
+        {"qty": 2, "unit": "tin", "item": "chopped tomatoes", "note": "400 g"},
+        {"qty": 1.5, "unit": "tbsp", "item": "milk"},
+        {"qty": 4, "item": "eggs"},
+    ]
+    assert [s["text"] for s in main["steps"]] == [
+        "Heat the oven to 180C.", "Beat the butter and sugar until pale and creamy.", "Bake for 45 minutes."]
+    assert drizzle["name"] == "Drizzle" and drizzle["ingredients"][1]["qty"] == 85
+    assert call(fam, "recipe_save", recipe=rec).status_code == 200
+
+
+def test_pasted_text_without_headings_and_nonsense(clients):
+    fam = clients["family"]
+    rec = call(fam, "recipe_parse_text", text="Tomato pasta\n2 tbsp olive oil\n1 onion, chopped\nSalt\n"
+               "Fry the onion in the oil for 5 minutes.\nStir in the pasta.").json()
+    (c,) = rec["components"]
+    assert [i["item"] for i in c["ingredients"]] == ["olive oil", "onion", "Salt"]
+    assert [s["text"] for s in c["steps"]] == ["Fry the onion in the oil for 5 minutes.", "Stir in the pasta."]
+    assert call(fam, "recipe_parse_text", text="   ").status_code == 400
+    assert call(fam, "recipe_parse_text", text="just a title").status_code == 400
+
+
+MODEL_RECIPE = {"title": "Cake", "category": "baking", "components": [{"name": "Sponge",
+    "ingredients": [{"qty": 225, "unit": "g", "item": "butter"}],
+    "steps": [{"text": "Bake for 45 minutes, until golden, then take it out.", "timer_seconds": 2700}]}]}
+
+
+def test_a_model_converts_imports_when_set_up(clients, stack, monkeypatch):
+    nibble, _ = stack
+    fam = clients["family"]
+    seen = []
+
+    async def answer(prompt):
+        seen.append(prompt)
+        return "Here you go:\n```json\n" + json.dumps(MODEL_RECIPE) + "\n```", "some/free-model"
+
+    monkeypatch.setattr(nibble.llm, "API_KEY", "k")
+    monkeypatch.setattr(nibble.llm, "complete", answer)
+    rec = call(fam, "recipe_parse_text", text=PASTED, source_url="https://example.com/x").json()
+    assert rec["_import"] == {"by": "some/free-model"} and rec["status"] == "draft"
+    assert rec["components"][0]["steps"][0]["timer_seconds"] == 2700 and rec["source_url"] == "https://example.com/x"
+    assert "one action" in seen[0].lower() and "Lemon Drizzle Cake" in seen[0]
+
+    async def page(url):
+        return {"url": url, "title": "Cake page", "text": "words", "image": "https://example.com/i.jpg",
+                "structured": {"name": "Cake", "ingredients": ["225g butter"], "instructions": [{"text": "Mix and bake."}]}}
+
+    monkeypatch.setattr(nibble, "recipe_fetch_page", page)
+    rec = call(fam, "recipe_import_page", url="https://example.com/cake").json()
+    assert rec["_import"]["by"] == "some/free-model" and rec["image_url"] == "https://example.com/i.jpg"
+    assert '"structured_data"' in seen[1]
+
+    # a broken answer falls back to Nibble's own reading, and says why
+    async def junk(prompt):
+        return "Sorry, I can't help with that.", "some/free-model"
+
+    monkeypatch.setattr(nibble.llm, "complete", junk)
+    rec = call(fam, "recipe_parse_text", text=PASTED).json()
+    assert rec["_import"]["by"] == "reader" and "no recipe" in rec["_import"]["why"]
+    rec = call(fam, "recipe_import_page", url="https://example.com/cake").json()
+    assert rec["_import"]["by"] == "page" and rec["components"][0]["ingredients"] == [{"qty": 225, "unit": "g", "item": "butter"}]
+    assert call(fam, "recipe_save", recipe=rec).status_code == 200
+
+
 def test_logout_goes_to_the_database(clients):
     r = clients["family"].post("/nibble/logout")
     assert r.status_code == 307 and r.headers["location"] == "/auth/web/logout"
