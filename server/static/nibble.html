@@ -183,7 +183,7 @@ a{color:var(--accent)}
       <div><h1>Nibble</h1><p class="tagline">The family recipe box</p></div>
     </div>
     <button class="btn primary" id="importBtn" type="button">+ Add a recipe</button>
-    <form method="post" action="/recipes/logout" id="signOut" hidden><button class="btn ghost" type="submit">Sign out</button></form>
+    <form method="post" action="/nibble/logout" id="signOut" hidden><button class="btn ghost" type="submit">Sign out</button></form>
   </header>
   <nav class="tabs" role="tablist" id="tabs"></nav>
   <div class="tools">
@@ -203,11 +203,11 @@ a{color:var(--accent)}
 (() => {
 "use strict";
 /* The same page runs two ways: as a Claude artifact (bee through the viewer's connector,
-   Claude for imports) or served by bee at /recipes (BEE_APP set by the server, a JSON API
+   Claude for imports) or served by Nibble at /nibble (NIBBLE_APP set by the server, a JSON API
    behind the family sign-in, no Claude). */
-const WEB = !!(window.BEE_APP && window.BEE_APP.web);
-const CAN_DELETE = !WEB || !!window.BEE_APP.canDelete;
-const CAN_EDIT = !WEB || window.BEE_APP.canEdit !== false;
+const WEB = !!(window.NIBBLE_APP && window.NIBBLE_APP.web);
+const CAN_DELETE = !WEB || !!window.NIBBLE_APP.canDelete;
+const CAN_EDIT = !WEB || window.NIBBLE_APP.canEdit !== false;
 /* Sam's connector is "bee-database"; family members name theirs "Family recipes". */
 const SERVERS = ["bee-database", "Family recipes"];
 let serverIx = 0;
@@ -317,7 +317,7 @@ async function call(tool, input, opts){
   if (WEB){
     let res;
     try {
-      res = await fetch((window.BEE_APP.apiBase || "/recipes/api/") + encodeURIComponent(tool), {method:"POST", credentials:"same-origin",
+      res = await fetch((window.NIBBLE_APP.apiBase || "/nibble/api/") + encodeURIComponent(tool), {method:"POST", credentials:"same-origin",
         headers:{"Content-Type":"application/json"}, body:JSON.stringify(input || {})});
     } catch { throw {code:"server_unavailable", retryable:true, message:"bee didn't answer."}; }
     if (res.status === 401){ location.reload(); throw {code:"needs_reauth"}; }
@@ -348,7 +348,7 @@ function connCopy(e){
     case "server_unavailable": return ["The recipe server isn't answering", "bee may be restarting or offline. Try again in a minute."];
     case "tool_error": return ["The recipe server refused that", (e.message || "").slice(0, 300)];
     case "not_granted": case "capability_disabled": case "capability_removed":
-      return ["This copy can't reach the recipe box", "Shared copies of this page can't use the recipe connector. Open the family recipe box at https://mcp.samjmerrick.com/recipes instead."];
+      return ["This copy can't reach the recipe box", "Shared copies of this page can't use the recipe connector. Open the family recipe box at https://home.samjmerrick.com/nibble instead."];
     default: return ["Something went wrong talking to the recipe server", (e && e.message || "").slice(0, 300)];
   }
 }

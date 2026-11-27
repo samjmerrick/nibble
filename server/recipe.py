@@ -407,3 +407,9 @@ def structured_from_jsonld(found: dict[str, Any]) -> dict[str, Any]:
         "ingredients": clean(found.get("recipeIngredient") or []),
         "instructions": _flatten_instructions(found.get("recipeInstructions")),
     }
+
+
+def fts_fallback(query: str) -> str:
+    """Turn arbitrary text into a safe FTS5 query (every word, prefix-matched, ANDed)."""
+    words = re.findall(r"\w+", query, flags=re.UNICODE)
+    return " ".join(f'"{w}"*' for w in words)

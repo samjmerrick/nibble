@@ -14,7 +14,7 @@ from typing import Any
 
 import webfetch
 
-from .recipe import _int, clean
+from recipe import _int, clean
 
 API = "https://production-api.gousto.co.uk/cmsreadbroker/v1/recipe/"
 

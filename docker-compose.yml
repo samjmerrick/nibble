@@ -1,20 +1,18 @@
-# Runs bee-database with Nibble loaded. It replaces the stock mcp-db service from bee-database:
-# same container name, same .env, same ./data volume, so nothing else on the server changes.
-# Expected layout (override with the variables if yours differs):
-#   ~/bee-database/   the server repo, with .env and data/
-#   ~/nibble/         this repo
+# Nibble runs next to bee-database, on the same Docker network, and cloudflared sends /nibble to it.
+# Needs a .env here with DB_TOKEN (bee's MCP_API_TOKEN, or another admin token) and PUBLIC_URL.
 services:
-  mcp-db:
-    build:
-      context: .
-      additional_contexts:
-        bee: ${BEE_SERVER_DIR:-../bee-database/server}
-    container_name: mcp-db
+  nibble:
+    build: .
+    container_name: nibble
     restart: unless-stopped
-    env_file: ${BEE_ENV_FILE:-../bee-database/.env}
+    env_file: .env
     environment:
-      TZ: ${TZ:-UTC}
-    volumes:
-      - ${BEE_DATA_DIR:-../bee-database/data}:/data
+      DB_URL: ${DB_URL:-http://mcp-db:8000}
     ports:
-      - "127.0.0.1:8765:8000"
+      - "127.0.0.1:8766:8000"   # only if cloudflared runs on the host, not in Docker
+    networks: [bee]
+
+networks:
+  bee:
+    name: ${BEE_NETWORK:-bee-database_default}   # the network bee-database's compose created
+    external: true
