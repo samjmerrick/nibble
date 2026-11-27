@@ -5,13 +5,15 @@ Any OpenAI-compatible chat endpoint works. Settings (in .env):
     LLM_BASE_URL  default https://openrouter.ai/api/v1
     LLM_MODEL     default openrouter/free (OpenRouter's router across its free models); any model id works,
                   e.g. a specific ":free" model, or anthropic/claude-... for paid Claude through OpenRouter
-    LLM_TIMEOUT   seconds per request, default 90
+    LLM_TIMEOUT   seconds for the whole model call, default 45 (Cloudflare drops a page request after ~100 s,
+                  and the link import also has to fetch the page first)
 Every answer is checked with recipe.normalise before it is shown; anything unusable raises LlmError and the
 caller falls back to the plain reader, so an import always gives a draft.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -24,7 +26,7 @@ import recipe as R
 API_KEY = os.environ.get("LLM_API_KEY", "").strip()
 BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 MODEL = os.environ.get("LLM_MODEL", "openrouter/free").strip()
-TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "90"))
+TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "45"))
 
 
 class LlmError(Exception):
@@ -66,9 +68,13 @@ async def complete(text: str) -> tuple[str, str]:
     headers = {"Authorization": f"Bearer {API_KEY}", "X-Title": "Nibble"}
     body = {"model": MODEL, "messages": [{"role": "user", "content": text}], "temperature": 0.2}
     try:
+        # A hard cap on the whole call: OpenRouter answers 200 at once and keeps the connection busy while a
+        # slow free model works, so httpx's per-read timeout alone never fires.
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            r = await client.post(f"{BASE_URL}/chat/completions", json=body, headers=headers)
-    except Exception as e:  # network errors, timeouts
+            r = await asyncio.wait_for(client.post(f"{BASE_URL}/chat/completions", json=body, headers=headers), TIMEOUT)
+    except asyncio.TimeoutError as e:
+        raise LlmError(f"The model took longer than {TIMEOUT:g} seconds.") from e
+    except Exception as e:  # network errors
         raise LlmError(f"The model didn't answer ({type(e).__name__}).") from e
     if r.status_code == 429:
         raise LlmError("The free model is busy or today's free limit is used up.")
