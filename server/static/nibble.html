@@ -46,6 +46,13 @@ header.top .hills{position:absolute;inset:auto 0 0 0;width:100%;height:46px;z-in
 .brand svg{flex:none;width:42px;height:50px}
 header.top h1{font-size:1.65rem;font-weight:700;letter-spacing:-.005em}
 .tagline{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+/* Add and Sign out sit on one line, the same height, centred on the brand (forms get a bottom margin
+   in this page's rendering mode, which used to push Sign out up). On phones they take their own row. */
+.head-actions{display:flex;align-items:center;gap:8px}
+.head-actions form{margin:0;display:flex}
+.head-actions [hidden]{display:none}
+@media (max-width:519px){.head-actions{width:100%}.head-actions #importBtn{flex:1;justify-content:center}
+  .tools .search{flex-basis:100%}.tools .btn{flex:1;justify-content:center}}
 @media (min-width:700px){header.top{margin:4px 0 8px;border-radius:22px;padding:18px 22px 34px}}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:.5rem 1rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;min-height:44px;font-weight:700}
 .btn:hover{border-color:var(--accent)}
@@ -137,9 +144,14 @@ a{color:var(--accent)}
 .field label{font-weight:700;font-size:.9rem}
 .field input,.field select,.field textarea{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:.6rem .75rem;min-height:44px;width:100%}
 .field textarea{min-height:140px;resize:vertical}
-.seg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+/* the add-recipe choices: one segmented control, equal widths, like the status picker */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;padding:4px;margin-bottom:16px;border-radius:14px;background:var(--sunk);max-width:520px}
+.seg .tab{min-height:40px;border-radius:10px;text-align:center;overflow:hidden;text-overflow:ellipsis}
+.seg .tab[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:var(--shadow)}
+form{margin:0}
 .row{display:flex;gap:10px;flex-wrap:wrap}
-.row>.field{flex:1 1 180px;min-width:0}
+.row>.field{flex:1 1 120px;min-width:0}
+.row>.field.wide{flex:2 1 260px}
 .progress{color:var(--muted);font-style:italic}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--danger-soft);padding:8px 12px;border-radius:var(--r)}
 /* cook mode */
@@ -184,8 +196,10 @@ a{color:var(--accent)}
       </svg>
       <div><h1>Nibble</h1><p class="tagline">The family recipe box</p></div>
     </div>
-    <button class="btn primary" id="importBtn" type="button">+ Add a recipe</button>
-    <form method="post" action="/nibble/logout" id="signOut" hidden><button class="btn ghost" type="submit">Sign out</button></form>
+    <div class="head-actions">
+      <button class="btn primary" id="importBtn" type="button">+ Add a recipe</button>
+      <form method="post" action="/nibble/logout" id="signOut" hidden><button class="btn ghost" type="submit">Sign out</button></form>
+    </div>
   </header>
   <nav class="tabs" role="tablist" id="tabs"></nav>
   <div class="tools">
@@ -890,7 +904,7 @@ function openImport(){
   const area = h("div");
   const s = sheet("Add a recipe", area);
   const draw = () => {
-    const seg = h("div", {class:"seg", role:"tablist"}, (WEB ? [["link","From a link"]] : [["link","From a link"],["text","Paste text"],["photo","From a photo"]]).map(([id, label]) =>
+    const seg = h("div", {class:"seg", role:"tablist"}, (WEB ? [["link","From a link"],["text","Paste text"]] : [["link","From a link"],["text","Paste text"],["photo","From a photo"]]).map(([id, label]) =>
       h("button", {class:"tab", type:"button", role:"tab", "aria-selected": String(mode === id), onclick:() => { mode = id; draw(); }}, label)));
     const out = h("div");
     let form;
@@ -900,7 +914,7 @@ function openImport(){
         h("button", {class:"btn primary", type:"submit"}, "Read the recipe"));
     } else if (mode === "text"){
       form = h("form", null,
-        h("div", {class:"field"}, h("label", {for:"impText"}, "Recipe text"), h("textarea", {id:"impText", required:true, placeholder:"Paste the ingredients and method here"})),
+        h("div", {class:"field"}, h("label", {for:"impText"}, "Recipe text"), h("textarea", {id:"impText", required:true, placeholder: WEB ? "Title on the first line, then an \u201cIngredients\u201d list (one per line) and a \u201cMethod\u201d (one step per line)" : "Paste the ingredients and method here"})),
         h("div", {class:"field"}, h("label", {for:"impSrc"}, "Where it's from (optional)"), h("input", {id:"impSrc", type:"url", placeholder:"https://…"})),
         h("button", {class:"btn primary", type:"submit"}, "Convert the recipe"));
     } else {
@@ -943,8 +957,16 @@ function openImport(){
       } else if (kind === "text"){
         const src = form.querySelector("#impSrc").value.trim();
         fallback = {source_url: safeUrl(src)};
+        const text = form.querySelector("#impText").value.slice(0, 40000);
+        if (WEB){
+          /* No Claude here: Nibble reads the headings, quantities and numbered steps itself. */
+          prog.textContent = "Reading the recipe…";
+          try { rec = await call("recipe_parse_text", {text, source_url: fallback.source_url || null}); }
+          catch (e){ throw {code:"parse", message: e && e.code === "tool_error" ? (e.message || "") : connCopy(e)[1]}; }
+        } else {
         prog.textContent = "Claude is converting the recipe…";
-        rec = await state.sample.json(convertPrompt(g, "Recipe text", form.querySelector("#impText").value.slice(0, 40000)), {signal: ctl.signal, cache:false});
+        rec = await state.sample.json(convertPrompt(g, "Recipe text", text), {signal: ctl.signal, cache:false});
+        }
       } else {
         const file = form.querySelector("#impPhoto").files[0];
         prog.textContent = "Claude is reading the photo…";
@@ -952,7 +974,7 @@ function openImport(){
       }
       showReview(normalise(rec, fallback), out, s);
     } catch (e){
-      out.replaceChildren(h("div", {class:"banner err"}, e && e.code === "fetch" ? `Couldn't fetch that page: ${e.message} Paste the recipe text instead.` : sampleCopy(e)));
+      out.replaceChildren(h("div", {class:"banner err"}, e && e.code === "fetch" ? `Couldn't fetch that page: ${e.message} Paste the recipe text instead.` : e && e.code === "parse" ? e.message : sampleCopy(e)));
     } finally { btn.disabled = false; }
   }
 }
@@ -981,7 +1003,7 @@ function showReview(rec, out, s, existingId){
       c.long.length ? `${c.long.length} step${c.long.length > 1 ? "s" : ""} may hold more than one action (marked below). ` : "Every step is a single action. ",
       c.unused.length ? `Not used in any step: ${c.unused.map(i => i.item).join(", ")}.` : "")),
     h("div", {class:"row"},
-      h("div", {class:"field"}, h("label", {for:"revTitle"}, "Title"), titleIn),
+      h("div", {class:"field wide"}, h("label", {for:"revTitle"}, "Title"), titleIn),
       h("div", {class:"field"}, h("label", {for:"revCat"}, "Category"), catIn),
       h("div", {class:"field"}, h("label", {for:"revServ"}, "Serves"), servIn)),
     h("div", {class:"actions"}, saveBtn),

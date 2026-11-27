@@ -33,6 +33,7 @@ from starlette.routing import Route
 
 import gousto
 import recipe as R
+import textparse
 import webfetch
 from dbclient import Db, DbError
 
@@ -189,11 +190,18 @@ async def recipe_fetch_page(url: str) -> dict[str, Any]:
     return out
 
 
+async def recipe_parse_text(text: str, source_url: str | None = None) -> dict[str, Any]:
+    """Pasted recipe text -> a draft recipe (no AI: see textparse)."""
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Paste the recipe text first.")
+    return textparse.parse_text(text[:40000], source_url)
+
+
 TOOLS = {
     "recipe_format_guide": ("read", recipe_format_guide), "recipe_list": ("read", recipe_list),
     "recipe_get": ("read", recipe_get), "recipe_save": ("write", recipe_save),
     "recipe_patch": ("write", recipe_patch), "recipe_delete": ("delete", recipe_delete),
-    "recipe_fetch_page": ("write", recipe_fetch_page),
+    "recipe_fetch_page": ("write", recipe_fetch_page), "recipe_parse_text": ("write", recipe_parse_text),
 }
 
 
